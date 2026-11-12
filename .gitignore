@@ -1,0 +1,39 @@
+# --- Sécurité des clés secrètes & credentials ---
+credentials.json
+.env
+*.env
+
+# --- Caches Python & Bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# --- Tests & Couverture ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Environnements virtuels ---
+venv/
+env/
+.venv/
+ENV/
+
+# --- Fichiers système Mac / OS ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# --- Checkpoints & Fichiers lourds temporaires ---
+*.log
+*.tmp
+checkpoints/
+
+# Ne pas ignorer le modèle de production
+!models/d3qn_atc_latest.pt
+

@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  # Microservice API FastAPI (Inférence Temps Réel)
+  atc-api:
+    build: .
+    container_name: atc-ai-api
+    ports:
+      - "8000:8000"
+    command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Dashboard Radar Interactif Streamlit
+  atc-radar:
+    build: .
+    container_name: atc-ai-radar
+    ports:
+      - "8501:8501"
+    command: streamlit run src/dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+    restart: unless-stopped
+    depends_on:
+      - atc-api
+
