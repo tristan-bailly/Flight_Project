@@ -3,6 +3,8 @@ Modèle cinématique 3D d'un aéronef avec gestion complète des 3 leviers ATC :
 1. Cap (Heading)
 2. Altitude / Taux vertical (Climb / Descend)
 3. Vitesse sol (Speed control : accélération / décélération)
+Comprend une protection d'enveloppe de vol (Flight Envelope Protection) interdisant
+les déviations extrêmes de cap (> 45°) afin d'exclure tout demi-tour irréaliste.
 """
 
 import numpy as np
@@ -56,23 +58,41 @@ class Aircraft:
     def vz(self) -> float:
         return self.vertical_rate
 
-    # --- Commandes ATC ---
-    def set_heading_target(self, target_deg: float):
-        """Virage vers un nouveau cap (degrés)."""
-        self.target_heading_deg = float(target_deg % 360.0)
+    # --- Commandes ATC & Autopilote ---
+    def set_heading_target(self, target_deg: float, nominal_deg: float = None, max_deviation_deg: float = 45.0):
+        """
+        Virage vers un nouveau cap (degrés).
+        Si nominal_deg est fourni, applique une protection stricte d'enveloppe de vol (max_deviation_deg).
+        """
+        target = float(target_deg % 360.0)
+        if nominal_deg is not None:
+            dev = (target - nominal_deg + 180.0) % 360.0 - 180.0
+            dev_clamped = np.clip(dev, -max_deviation_deg, max_deviation_deg)
+            target = float((nominal_deg + dev_clamped) % 360.0)
+        self.target_heading_deg = target
+
+    def set_altitude_target(self, target_alt_m: float):
+        """Consigne absolue d'altitude cible (mètres)."""
+        self.target_altitude = float(target_alt_m)
+        if self.target_altitude > self.z + 1.0:
+            self.target_vertical_rate = STANDARD_CLIMB_RATE_MS
+        elif self.target_altitude < self.z - 1.0:
+            self.target_vertical_rate = STANDARD_DESC_RATE_MS
+        else:
+            self.target_vertical_rate = 0.0
+
+    def set_speed_target(self, target_speed_ms: float):
+        """Consigne absolue de vitesse cible (m/s)."""
+        new_speed = np.clip(target_speed_ms, CRUISE_SPEED_MIN_MS, CRUISE_SPEED_MAX_MS)
+        self.target_speed = float(new_speed)
 
     def change_altitude_target(self, delta_alt_m: float):
         """Ordre de changement d'altitude (+/- delta en mètres, ex: +/- 1000 ft)."""
-        self.target_altitude += float(delta_alt_m)
-        if self.target_altitude > self.z:
-            self.target_vertical_rate = STANDARD_CLIMB_RATE_MS
-        else:
-            self.target_vertical_rate = STANDARD_DESC_RATE_MS
+        self.set_altitude_target(self.target_altitude + float(delta_alt_m))
 
     def change_speed_target(self, delta_speed_ms: float):
         """Ordre de consigne de vitesse (+/- delta en m/s, ex: +/- 20 kts)."""
-        new_speed = np.clip(self.speed + delta_speed_ms, CRUISE_SPEED_MIN_MS, CRUISE_SPEED_MAX_MS)
-        self.target_speed = float(new_speed)
+        self.set_speed_target(self.speed + delta_speed_ms)
 
     def step(self, dt: float):
         """
@@ -95,10 +115,14 @@ class Aircraft:
         else:
             self.speed += np.sign(diff_s) * max_accel
 
-        # 3. Pilotage de l'altitude : arrêt de la montée/descente une fois l'altitude cible atteinte
+        # 3. Pilotage de l'altitude : palier atteint à ±15 m
         alt_err = self.target_altitude - self.z
-        if abs(alt_err) < 20.0:  # Palier atteint à ±20 m
+        if abs(alt_err) < 15.0:
             self.target_vertical_rate = 0.0
+        elif alt_err > 0 and self.target_vertical_rate <= 0:
+            self.target_vertical_rate = STANDARD_CLIMB_RATE_MS
+        elif alt_err < 0 and self.target_vertical_rate >= 0:
+            self.target_vertical_rate = STANDARD_DESC_RATE_MS
 
         # Pilotage du taux de montée (accélération verticale douce)
         diff_v = self.target_vertical_rate - self.vertical_rate
@@ -120,8 +144,9 @@ class Aircraft:
             "y": self.y,
             "z": self.z,
             "speed": self.speed,
-            "heading": self.heading_deg,
+            "heading_deg": self.heading_deg,
             "vertical_rate": self.vertical_rate,
+            "target_heading_deg": self.target_heading_deg,
             "target_altitude": self.target_altitude,
-            "target_speed": self.target_speed,
+            "target_speed": self.target_speed
         }
